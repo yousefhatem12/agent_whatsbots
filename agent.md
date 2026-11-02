@@ -65,3 +65,4 @@ The **FastAPI MySQL WhatsApp Agent** is an asynchronous AI-powered backend servi
   - Diagnostic endpoint that tests the cPanel MySQL connection and returns the MySQL version and table list.
 - **`GET /health`**
   - Lightweight health check endpoint returning `{"status": "ok"}`.
+
