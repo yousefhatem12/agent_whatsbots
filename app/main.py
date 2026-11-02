@@ -89,7 +89,8 @@ async def whatsapp_webhook(
         phone=payload.phone,
         message=payload.message,
     )
-    return WebhookResponse(reply=reply_text)
+    status_val = "success" if reply_text else "error"
+    return WebhookResponse(status=status_val, reply=reply_text)
 
 
 @app.post(

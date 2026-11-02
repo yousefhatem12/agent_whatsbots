@@ -58,8 +58,27 @@ def _fallback_product_lookup(db: Session) -> str:
         return "Service is running, but the database or OpenAI API key is not configured yet."
 
 
+# Cached SQLDatabase instance so large cPanel databases (e.g. shgarde_dummy) are not re-reflected on every request
+_cached_sql_db: SQLDatabase | None = None
+
+
+def _get_sql_database() -> SQLDatabase:
+    """Return a cached SQLDatabase instance with lightweight table reflection."""
+    global _cached_sql_db
+    if _cached_sql_db is None:
+        _cached_sql_db = SQLDatabase(
+            engine,
+            sample_rows_in_table_info=1,
+            max_string_length=150,
+        )
+    return _cached_sql_db
+
+
 async def process_whatsapp_message(db: Session, phone: str, message: str) -> str:
     """Process an incoming WhatsApp message using the LangChain SQL Agent and MySQL context."""
+    if not message or not message.strip():
+        return "مرحباً بك! كيف يمكنني مساعدتك اليوم؟"
+
     user_id, history_context = _build_conversation_context(db, phone=phone)
 
     if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY == "your_openai_api_key_here":
@@ -72,15 +91,19 @@ async def process_whatsapp_message(db: Session, phone: str, message: str) -> str
                 temperature=0,
                 api_key=settings.OPENAI_API_KEY,
                 base_url=settings.OPENAI_BASE_URL or None,
+                timeout=12,
+                max_retries=1,
             )
             try:
-                sql_db = SQLDatabase(engine)
+                sql_db = _get_sql_database()
                 agent_executor = create_sql_agent(
                     llm=llm,
                     db=sql_db,
                     agent_type="openai-tools",
                     prefix=SYSTEM_PREFIX,
                     verbose=settings.DEBUG,
+                    max_iterations=4,
+                    max_execution_time=12,
                 )
 
                 prompt = (
@@ -89,7 +112,7 @@ async def process_whatsapp_message(db: Session, phone: str, message: str) -> str
                     f"Current User Question: {message}"
                 )
                 result = await agent_executor.ainvoke({"input": prompt})
-                reply = result.get("output", "I could not find an answer to your request.")
+                reply = result.get("output", "").strip() or "لم أتمكن من العثور على إجابة، هل يمكنك توضيح سؤالك؟"
             except Exception as db_exc:
                 logger.warning(
                     "SQL Agent DB connection unavailable (%s); falling back to direct LLM response.",
@@ -101,10 +124,10 @@ async def process_whatsapp_message(db: Session, phone: str, message: str) -> str
                         ("human", f"Customer Phone: {phone}\nQuestion: {message}"),
                     ]
                 )
-                reply = str(ai_msg.content)
+                reply = str(ai_msg.content).strip()
         except Exception as exc:
             logger.exception("Error while processing message for phone %s: %s", phone, exc)
-            reply = "Sorry, I encountered an error while processing your request. Please try again later."
+            reply = ""
 
     if user_id is not None:
         try:
