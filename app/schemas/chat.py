@@ -36,4 +36,9 @@ class WebhookResponse(BaseModel):
         examples=["Here are the items found in the database..."],
         description="Generated response text mapped to {{{reply}}} in WhatsApp flow",
     )
+    res: str = Field(
+        default="",
+        examples=["Here are the items found in the database..."],
+        description="Alias for reply mapped to {{{res}}} in WhatsApp flow",
+    )
 
