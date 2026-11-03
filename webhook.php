@@ -44,3 +44,4 @@ if ($response === false) {
 
 http_response_code($httpCode ?: 200);
 echo $response;
+
