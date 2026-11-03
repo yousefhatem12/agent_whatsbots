@@ -1,17 +1,17 @@
 from datetime import datetime
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
 
 
 class User(Base):
-    """WhatsApp user identified by phone number."""
+    """WhatsApp user identified by phone number (isolated from existing app `users` table)."""
 
-    __tablename__ = "users"
+    __tablename__ = "whatsapp_users"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    phone: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=False)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, index=True)
+    phone: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -27,11 +27,11 @@ class User(Base):
 
 
 class Product(Base):
-    """Sample inventory/catalog model for product stock & price queries."""
+    """Sample inventory/catalog model for fallback product stock & price queries."""
 
-    __tablename__ = "products"
+    __tablename__ = "whatsapp_products"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, index=True)
     name: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     price: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
@@ -47,12 +47,12 @@ class Product(Base):
 class ChatHistory(Base):
     """Stores incoming user messages and agent replies for conversational context."""
 
-    __tablename__ = "chat_history"
+    __tablename__ = "whatsapp_chat_history"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, index=True)
     user_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("users.id", ondelete="CASCADE"),
+        BigInteger,
+        ForeignKey("whatsapp_users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
