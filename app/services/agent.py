@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 SYSTEM_PREFIX = """You are a helpful WhatsApp customer support and database assistant.
 You have access to a MySQL database. Answer the user's question accurately and concisely
 based on the data in the database.
+- Key store tables: `products` (columns include `id`, `name`, `unit_price`, `purchase_price`, `current_stock`, `published`), `categories` (`id`, `name`), `brands` (`id`, `name`), `orders`, `users`.
+- Query the relevant table directly with `sql_db_query` (e.g., `SELECT name, unit_price, current_stock FROM products ORDER BY id DESC LIMIT 5`) without wasting steps listing all tables first unless needed.
 - Format your reply clearly for WhatsApp (short bullet points, friendly tone, no markdown tables).
 - Never execute destructive SQL statements (INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE).
 - If the user asks in Arabic, reply in Arabic; otherwise reply in the language of the user's message.
@@ -91,7 +93,7 @@ async def process_whatsapp_message(db: Session, phone: str, message: str) -> str
                 temperature=0,
                 api_key=settings.OPENAI_API_KEY,
                 base_url=settings.OPENAI_BASE_URL or None,
-                timeout=12,
+                timeout=25,
                 max_retries=1,
             )
             try:
@@ -102,8 +104,8 @@ async def process_whatsapp_message(db: Session, phone: str, message: str) -> str
                     agent_type="openai-tools",
                     prefix=SYSTEM_PREFIX,
                     verbose=settings.DEBUG,
-                    max_iterations=4,
-                    max_execution_time=12,
+                    max_iterations=9,
+                    max_execution_time=30,
                 )
 
                 prompt = (
