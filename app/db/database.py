@@ -248,11 +248,11 @@ def search_products(
             key = f"q_{idx}"
             params[key] = f"%{term}%"
             clause = (
-                f"(p.name LIKE :{key} OR pt.name LIKE :{key} OR p.tags LIKE :{key} "
+                f"(p.name LIKE :{key} OR pt.ar_name LIKE :{key} OR p.tags LIKE :{key} "
                 f"OR c.name LIKE :{key} OR b.name LIKE :{key} OR p.slug LIKE :{key})"
             )
             term_clauses.append(clause)
-            score_parts.append(f"(CASE WHEN p.name LIKE :{key} OR pt.name LIKE :{key} THEN 3 WHEN b.name LIKE :{key} OR c.name LIKE :{key} THEN 2 ELSE 1 END)")
+            score_parts.append(f"(CASE WHEN p.name LIKE :{key} OR pt.ar_name LIKE :{key} THEN 3 WHEN b.name LIKE :{key} OR c.name LIKE :{key} THEN 2 ELSE 1 END)")
         if term_clauses:
             # Match ANY expanded keyword and rank rows matching the most keywords first
             where_clauses.append("(" + " OR ".join(term_clauses) + ")")
@@ -267,8 +267,8 @@ def search_products(
         SELECT
             p.id,
             p.name,
-            MAX(pt.name)        AS ar_name,
-            MAX(pt.description) AS ar_description,
+            pt.ar_name          AS ar_name,
+            pt.ar_description   AS ar_description,
             p.category_id,
             c.name              AS category_name,
             p.brand_id,
@@ -285,9 +285,13 @@ def search_products(
         FROM products p
         LEFT JOIN categories c ON c.id = p.category_id
         LEFT JOIN brands b ON b.id = p.brand_id
-        LEFT JOIN product_translations pt ON pt.product_id = p.id AND pt.lang IN ('sa', 'ar', 'en')
+        LEFT JOIN (
+            SELECT product_id, MAX(name) AS ar_name, MAX(description) AS ar_description
+            FROM product_translations
+            WHERE lang IN ('sa', 'ar', 'en')
+            GROUP BY product_id
+        ) pt ON pt.product_id = p.id
         WHERE {" AND ".join(where_clauses)}
-        GROUP BY p.id
         ORDER BY (p.current_stock > 0) DESC, match_score DESC, p.unit_price {order_dir}
         {limit_sql}
     """
@@ -333,8 +337,8 @@ def get_offers_and_deals(
         SELECT
             p.id,
             p.name,
-            MAX(pt.name)        AS ar_name,
-            MAX(pt.description) AS ar_description,
+            pt.ar_name          AS ar_name,
+            pt.ar_description   AS ar_description,
             p.category_id,
             c.name              AS category_name,
             p.brand_id,
@@ -350,9 +354,13 @@ def get_offers_and_deals(
         FROM products p
         LEFT JOIN categories c ON c.id = p.category_id
         LEFT JOIN brands b ON b.id = p.brand_id
-        LEFT JOIN product_translations pt ON pt.product_id = p.id AND pt.lang IN ('sa', 'ar', 'en')
+        LEFT JOIN (
+            SELECT product_id, MAX(name) AS ar_name, MAX(description) AS ar_description
+            FROM product_translations
+            WHERE lang IN ('sa', 'ar', 'en')
+            GROUP BY product_id
+        ) pt ON pt.product_id = p.id
         WHERE {" AND ".join(where_clauses)}
-        GROUP BY p.id
         ORDER BY p.discount DESC, p.todays_deal DESC, p.unit_price ASC
         LIMIT :limit
     """
