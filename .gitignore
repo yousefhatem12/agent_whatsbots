@@ -20,6 +20,8 @@ cron_uvicorn.log
 tmp/
 pids/
 *.pid
+.htaccess
+restart_bot.sh
 
 # IDE & OS files
 .vscode/
