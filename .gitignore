@@ -4,16 +4,27 @@ __pycache__/
 *$py.class
 
 # Virtual environments
-venv/
 .venv/
+venv/
 env/
+ENV/
 
-# Environment variables
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
 
+# Logs & runtime artifacts
+*.log
+cron_uvicorn.log
+tmp/
+pids/
+*.pid
 
-# IDE / Editor folders
+# IDE & OS files
 .vscode/
 .idea/
+.DS_Store
+Thumbsumbs.db
 *.swp
-*.swo
 

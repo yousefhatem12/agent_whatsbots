@@ -1,132 +1,119 @@
-# FastAPI MySQL WhatsApp Agent
+# Riyadh Real Estate WhatsApp Chat API (`agent_whatsbots`)
 
-An asynchronous FastAPI service designed to receive Webhook requests from WhatsApp flow orchestrators (such as MashiiBOT), process user queries using MySQL database contexts, and return structured response payloads.
+FastAPI-powered conversational AI backend for **Mashi Real Estate Marketing (ماشي للتسويق العقاري)**, helping customers find furnished apartments for monthly and annual rent in Riyadh via WhatsApp.
 
 ---
 
-## 🏗 Project Architecture
+## Key Features
+
+- **Intent-First Conversational Search**: Extracts customer preferences (neighborhood, direction, apartment type, budget, sort order, exclusions) in any order across turns.
+- **Live Inventory Validation**: Dynamically queries and caches active neighborhoods, apartment types (`studio`, `one_bedroom`, `two_bedroom`), and real price ranges directly from MySQL (`CACHE_TTL = 60s`).
+- **Smart Fallback Hierarchy**:
+  1. Exact apartment type & neighborhood within budget
+  2. Above-budget stock in the same neighborhood & type
+  3. Alternative apartment types in the same neighborhood
+  4. Soon-to-be-available units (`search_upcoming_properties`)
+  5. Same-direction neighborhoods in Riyadh (`شمال`, `شرق`, `غرب`, `وسط`, `جنوب`)
+- **Dual LLM Provider Support**: Works seamlessly with **DeepSeek** (`deepseek-v4-flash`, with configurable thinking mode) and **OpenAI** (`gpt-4o`) via the OpenAI-compatible SDK.
+- **WhatsApp-Native Formatting Guardrails**: Enforces single-asterisk bold (`*نص*`), strips emojis, formats phone numbers into international `+966` format without invisible bidi characters, and guarantees canonical property links.
+
+---
+
+## Project Structure
 
 ```text
-fastapi-mysql-agent/
-│
+.
 ├── app/
-│   ├── __init__.py
-│   ├── main.py              # FastAPI app initialization & webhook routes
-│   ├── config.py            # Environment & app configuration settings
-│   │
-│   ├── database/
-│   │   ├── __init__.py
-│   │   ├── session.py       # SQLAlchemy engine & DB session dependency
-│   │   └── base.py          # Declarative Base for ORM models
-│   │
-│   ├── models/
-│   │   ├── __init__.py
-│   │   └── user.py          # SQLAlchemy ORM database models (User, Product, ChatHistory)
-│   │
-│   ├── schemas/
-│   │   ├── __init__.py
-│   │   └── chat.py          # Pydantic models for request/response validation
-│   │
-│   ├── crud/
-│   │   ├── __init__.py
-│   │   └── crud_chat.py     # Database query & data handling operations
-│   │
-│   └── services/
-│       ├── __init__.py
-│       └── agent.py         # AI agent logic / DB processing engine
-│
-├── .env.example             # Template for environment variables
-├── .env                     # Local environment file (git-ignored)
-├── .gitignore               # Git ignore rules
-├── requirements.txt         # Project dependencies
-└── README.md                # Project documentation
+│   ├── api/
+│   │   ├── routes.py            # FastAPI endpoints (/chat, /session/reset, /health, /)
+│   │   └── schemas.py           # Pydantic request/response models & validation
+│   ├── core/
+│   │   └── config.py            # Environment & LLM/Database configuration
+│   ├── db/
+│   │   ├── database.py          # SQLAlchemy read-only MySQL engine & property queries
+│   │   └── seed_data.py         # Live inventory cache (neighborhoods, types, price ranges)
+│   ├── services/
+│   │   ├── apartment_types.py   # Arabic apartment type classification & neighborhood helpers
+│   │   ├── chat_service.py      # Session state, slot extraction, tool execution & LLM loop
+│   │   └── prompts.py           # System prompt, guardrails, policies & tool schemas
+│   └── main.py                  # FastAPI application entrypoint & lifespan handler
+├── main.py                      # Local Uvicorn runner
+├── passenger_wsgi.py            # cPanel / Passenger WSGI adapter (via a2wsgi)
+├── start_uvicorn.sh             # Production cron/daemon startup script
+├── requirements.txt             # Python dependencies
+└── .env.example                 # Example environment variables template
 ```
 
 ---
 
-## 🚀 Getting Started
+## Quick Start
 
-### 1. Prerequisites
-- **Python**: Version 3.10 or higher
-- **MySQL Server**: Running locally or on a remote instance
-
-### 2. Environment Setup
-Clone or open the project directory in your workspace, then create and activate a virtual environment:
+### 1. Install Dependencies
 
 ```bash
-# Create virtual environment
-python -m venv venv
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# Linux / macOS
+source .venv/bin/activate
 
-# Activate on Linux/macOS
-source venv/bin/activate
-
-# Activate on Windows (PowerShell)
-.\venv\Scripts\Activate.ps1
-```
-
-Install the required dependencies:
-
-```bash
 pip install -r requirements.txt
 ```
 
-### 3. Environment Variables Configuration
-Copy `.env.example` to `.env` and configure your database credentials and API keys:
+### 2. Configure Environment
+
+Copy `.env.example` to `.env` and fill in your credentials:
 
 ```bash
 cp .env.example .env
 ```
 
-Set the variables inside `.env`:
+Required settings in `.env`:
+- `LLM_PROVIDER`: `deepseek` or `openai`
+- `DEEPSEEK_API_KEY` or `OPENAI_API_KEY` (or generic `LLM_API_KEY`)
+- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
 
-```env
-DATABASE_URL=mysql+pymysql://<DB_USER>:<DB_PASSWORD>@<DB_HOST>:<DB_PORT>/<DB_NAME>
-OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_MODEL=gpt-4o-mini
-```
-
----
-
-## 🏃 Running the Application
-
-Start the FastAPI development server with live reload:
+### 3. Run the Server
 
 ```bash
+python main.py
+# Or directly with Uvicorn:
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-The interactive API documentation (Swagger UI) will be accessible at:
-- **Swagger Docs**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-
 ---
 
-## 📡 Webhook Integration Specifications
+## API Endpoints
 
-- **Endpoint**: `POST /`
-- Designed for direct integration with WhatsApp flow modules (e.g., MashiiBOT Make Request nodes).
+### `POST /chat`
+Process a customer WhatsApp message and return the assistant's reply.
 
-### Expected Request Payload
+**Request Body:**
 ```json
 {
-  "phone": "201000000000",
-  "message": "What products are available in stock?"
+  "phone": "+966500000000",
+  "message": "السلام عليكم، أبغى غرفة وصالة في النرجس"
 }
 ```
 
-### Expected Response Payload
+**Response Body:**
 ```json
 {
-  "reply": "Here are the items found in the database..."
+  "reply": "الأسعار لشقق غرفة وصالة في النرجس تبدأ من ...",
+  "images": []
 }
 ```
 
----
+### `POST /session/reset`
+Clear the in-memory conversation history, search results, and extracted criteria for a specific phone number.
 
-## 🛠 Technology Stack
-- **Framework**: [FastAPI](https://fastapi.tiangolo.com/)
-- **Database Connector**: [SQLAlchemy](https://www.sqlalchemy.org/) + [PyMySQL](https://pymysql.readthedocs.io/)
-- **Data Validation**: [Pydantic v2](https://docs.pydantic.dev/)
-- **Server**: [Uvicorn](https://www.uvicorn.org/)
-- **LLM / Agent Layer**: OpenAI / LangChain (configurable in `app/services/agent.py`)
+**Request Body:**
+```json
+{
+  "phone": "+966500000000"
+}
+```
+
+### `GET /health` & `GET /`
+Health check returning service status and active LLM provider/model.
 
