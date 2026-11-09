@@ -1,49 +1,100 @@
 """
-Dynamic config loaded from the live database.
+Dynamic store configuration loaded from the live Shgarde MySQL database (shgarde_dummy).
 Results are cached for CACHE_TTL seconds so the DB isn't hit on every message.
-The cache refreshes automatically — no app restart needed when data changes.
+The cache refreshes automatically — no app restart needed when products/categories/brands change.
 """
 from __future__ import annotations
 
-import re
-import time
 import logging
+import time
 
 logger = logging.getLogger("realestate-chat")
 
 _cache: dict | None = None
 _cache_time: float = 0
-# Keep this short so a newly registered building/neighborhood appears in the
-# conversation without an application restart.  This query is small and is
-# also used by the deterministic Arabic area matcher.
 CACHE_TTL: int = 60
+
+DEFAULT_CATEGORIES = [
+    "وصل حديثاً",
+    "أكسسوارات",
+    "صفقة اليوم",
+    "الهواتف الذكية",
+    "صوتى",
+    "الأجهزة المنزلية",
+    "الكابلات",
+    "الحمايات والشاشات",
+    "الساعات الذكية",
+    "إكسسوارات السيارة",
+    "هواتف أيفون",
+    "سامسونج",
+    "الكمبيوتر واللاب توب",
+    "ستاند سيارة",
+    "سماعات TWS",
+    "بوربنك",
+    "سماعات الرأس",
+    "شواحن الحائط",
+    "مكبر صوت",
+    "الألعاب",
+    "أجهزة لوحية وأيباد",
+]
+
+DEFAULT_BRANDS = [
+    "بيسوس",
+    "بروميت",
+    "يو جريين",
+    "شاومي",
+    "راف بور",
+    "موفت",
+    "أنكر",
+    "ابل",
+    "هافيت",
+    "روك ستون",
+    "هاي فيوتشر",
+    "سيا إلكترونيك",
+    "سامسونج",
+    "هونر",
+    "اوبو",
+    "إنفنكس",
+    "إنيرجيزر",
+    "سكينأرما",
+    "بلومز",
+    "ريلمي",
+]
 
 
 def _default_config() -> dict:
     return {
-        "city": "الرياض",
-        "neighborhoods": [],
-        "neighborhood_groups": [],
+        "store_name": "متجر شقردي",
+        "store_url": "https://shgarde.com",
+        "currency": "د.ك",
+        "currency_code": "KWD",
+        "categories": list(DEFAULT_CATEGORIES),
+        "brands": list(DEFAULT_BRANDS),
+        "total_products": 1710,
+        "price_min": 0.99,
+        "price_max": 885.0,
+        # Backward-compatible keys
+        "city": "الكويت",
+        "neighborhoods": list(DEFAULT_CATEGORIES),
+        "neighborhood_groups": list(DEFAULT_CATEGORIES),
         "neighborhoods_by_type": {
-            "studio": [],
-            "one_bedroom": [],
-            "two_bedroom": [],
+            "studio": list(DEFAULT_CATEGORIES),
+            "one_bedroom": list(DEFAULT_CATEGORIES),
+            "two_bedroom": list(DEFAULT_CATEGORIES),
         },
         "neighborhood_groups_by_type": {
-            "studio": [],
-            "one_bedroom": [],
-            "two_bedroom": [],
-            "any": [],
+            "studio": list(DEFAULT_CATEGORIES),
+            "one_bedroom": list(DEFAULT_CATEGORIES),
+            "two_bedroom": list(DEFAULT_CATEGORIES),
+            "any": list(DEFAULT_CATEGORIES),
         },
         "available_types_by_neighborhood": {},
-        "available_types": [],
-        "price_min": 0,
-        "price_max": 99999,
+        "available_types": list(DEFAULT_BRANDS),
     }
 
 
 def get_config() -> dict:
-    """Return neighborhood list and price range, refreshing from DB if stale."""
+    """Return store categories, brands, and price range, refreshing from DB if stale."""
     global _cache, _cache_time
     now = time.time()
     if _cache is None or (now - _cache_time) > CACHE_TTL:
@@ -51,11 +102,13 @@ def get_config() -> dict:
             _cache = _load_from_db()
             _cache_time = now
             logger.info(
-                "DB config refreshed: %d neighborhoods (%d groups), price range %s–%s SAR",
-                len(_cache["neighborhoods"]),
-                len(_cache["neighborhood_groups"]),
+                "DB config refreshed: %d categories, %d brands, %d products, price range %s–%s %s",
+                len(_cache["categories"]),
+                len(_cache["brands"]),
+                _cache["total_products"],
                 _cache["price_min"],
                 _cache["price_max"],
+                _cache["currency"],
             )
         except Exception:
             logger.warning("Failed to refresh DB config from database; using fallback/cached config", exc_info=True)
@@ -66,108 +119,98 @@ def get_config() -> dict:
 
 
 def _load_from_db() -> dict:
-    from app.db.database import engine
-    from app.services.apartment_types import TYPE_LABELS, base_neighborhood_name, detect_type
     from sqlalchemy import text
+    from app.db.database import engine
 
     with engine.connect() as conn:
-        # Only expose neighborhoods that have at least one currently approved
-        # listing.  Building records can exist long before a unit is available
-        # and must not be presented to a customer as available areas.
-        inventory_rows = conn.execute(
+        category_rows = conn.execute(
             text("""
-                SELECT DISTINCT
-                    b.name AS building_name,
-                    p.title,
-                    p.description,
-                    p.rooms_count
-                FROM properties p
-                JOIN buildings b
-                  ON b.id = CASE WHEN p.id = 130 THEN 11 ELSE p.building_id END
-                WHERE p.status = 'approved'
-                  AND p.price_monthly IS NOT NULL
-                  AND b.name IS NOT NULL
-                  AND TRIM(b.name) <> ''
-                ORDER BY b.name
+                SELECT
+                    c.id,
+                    c.name,
+                    COUNT(p.id) AS product_count
+                FROM categories c
+                JOIN products p
+                  ON p.category_id = c.id
+                 AND p.published = 1
+                 AND p.approved = 1
+                WHERE c.name IS NOT NULL
+                  AND TRIM(c.name) <> ''
+                GROUP BY c.id, c.name
+                HAVING product_count > 0
+                ORDER BY product_count DESC, c.name ASC
             """)
         ).fetchall()
 
-        # Price range across all approved listings
+        brand_rows = conn.execute(
+            text("""
+                SELECT
+                    b.id,
+                    b.name,
+                    COUNT(p.id) AS product_count
+                FROM brands b
+                JOIN products p
+                  ON p.brand_id = b.id
+                 AND p.published = 1
+                 AND p.approved = 1
+                WHERE b.name IS NOT NULL
+                  AND TRIM(b.name) <> ''
+                GROUP BY b.id, b.name
+                HAVING product_count > 0
+                ORDER BY product_count DESC, b.name ASC
+            """)
+        ).fetchall()
+
         price_row = conn.execute(
             text("""
                 SELECT
-                    MIN(price_monthly) AS min_price,
-                    MAX(price_monthly) AS max_price
-                FROM properties
-                WHERE status = 'approved'
-                  AND price_monthly IS NOT NULL
+                    COUNT(*)        AS total_products,
+                    MIN(unit_price) AS min_price,
+                    MAX(unit_price) AS max_price
+                FROM products
+                WHERE published = 1
+                  AND approved = 1
+                  AND unit_price IS NOT NULL
             """)
         ).fetchone()
 
-    neighborhoods: list[str] = []
-    neighborhoods_by_type: dict[str, list[str]] = {
-        "studio": [],
-        "one_bedroom": [],
-        "two_bedroom": [],
-    }
-    for row in inventory_rows:
-        name = row[0]
-        if not name:
-            continue
-        if name not in neighborhoods:
-            neighborhoods.append(name)
+    categories = [str(r[1]).strip() for r in category_rows if r[1] and str(r[1]).strip()]
+    brands = [str(r[1]).strip() for r in brand_rows if r[1] and str(r[1]).strip()]
 
-        apartment_type = detect_type(row[1], row[2], row[3])
-        if name not in neighborhoods_by_type[apartment_type]:
-            neighborhoods_by_type[apartment_type].append(name)
+    total_products = int(price_row[0]) if price_row and price_row[0] is not None else 0
+    price_min = round(float(price_row[1]), 3) if price_row and price_row[1] is not None else 0.0
+    price_max = round(float(price_row[2]), 3) if price_row and price_row[2] is not None else 9999.0
 
-    price_min = int(price_row[0]) if price_row and price_row[0] is not None else 0
-    price_max = int(price_row[1]) if price_row and price_row[1] is not None else 99999
-
-    # Build unique base names by stripping trailing numbers
-    # e.g. "النرجس 1" and "النرجس 3" → "النرجس"
-    seen: set = set()
-    grouped: list = []
-    for name in neighborhoods:
-        base = base_neighborhood_name(name)
-        if base not in seen:
-            seen.add(base)
-            grouped.append(base)
-
-    grouped_by_type: dict[str, list[str]] = {}
-    for apartment_type, names in neighborhoods_by_type.items():
-        seen = set()
-        grouped_names = []
-        for name in names:
-            base = base_neighborhood_name(name)
-            if base not in seen:
-                seen.add(base)
-                grouped_names.append(base)
-        grouped_by_type[apartment_type] = grouped_names
-
-    grouped_by_type["any"] = grouped
-
-    available_types_by_neighborhood: dict[str, list[str]] = {
-        base: [] for base in grouped
-    }
-    for apartment_type, names in neighborhoods_by_type.items():
-        for name in names:
-            base = base_neighborhood_name(name)
-            if apartment_type not in available_types_by_neighborhood.setdefault(base, []):
-                available_types_by_neighborhood[base].append(apartment_type)
+    if not categories:
+        categories = list(DEFAULT_CATEGORIES)
+    if not brands:
+        brands = list(DEFAULT_BRANDS)
 
     return {
-        "city": "الرياض",
-        "neighborhoods": neighborhoods,  # full names used for DB search
-        "neighborhood_groups": grouped,  # all live areas shown before type is known
-        "neighborhoods_by_type": neighborhoods_by_type,
-        "neighborhood_groups_by_type": grouped_by_type,
-        "available_types_by_neighborhood": available_types_by_neighborhood,
-        "available_types": [
-            apartment_type
-            for apartment_type in TYPE_LABELS
-            if grouped_by_type.get(apartment_type)
-        ],
+        "store_name": "متجر شقردي",
+        "store_url": "https://shgarde.com",
+        "currency": "د.ك",
+        "currency_code": "KWD",
+        "categories": categories,
+        "brands": brands,
+        "total_products": total_products,
         "price_min": price_min,
         "price_max": price_max,
+        # Backward-compatible keys
+        "city": "الكويت",
+        "neighborhoods": categories,
+        "neighborhood_groups": categories,
+        "neighborhoods_by_type": {
+            "studio": categories,
+            "one_bedroom": categories,
+            "two_bedroom": categories,
+        },
+        "neighborhood_groups_by_type": {
+            "studio": categories,
+            "one_bedroom": categories,
+            "two_bedroom": categories,
+            "any": categories,
+        },
+        "available_types_by_neighborhood": {cat: brands[:5] for cat in categories},
+        "available_types": brands,
     }
