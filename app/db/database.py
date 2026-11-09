@@ -148,8 +148,12 @@ def search_properties(
         {limit_clause}
     """
 
-    with engine.connect() as conn:
-        rows = conn.execute(text(sql), params).mappings().all()
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text(sql), params).mappings().all()
+    except Exception:
+        logger.warning("DB search_properties query failed", exc_info=True)
+        return []
 
     results = _format_rows(rows)
 
@@ -204,8 +208,12 @@ def price_range(
           {rooms_clause}
     """
 
-    with engine.connect() as conn:
-        row = conn.execute(text(sql), params).mappings().first()
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(text(sql), params).mappings().first()
+    except Exception:
+        logger.warning("DB price_range query failed", exc_info=True)
+        return {"count": 0}
 
     count = int(row["cnt"]) if row and row["cnt"] is not None else 0
     if count == 0:
@@ -284,8 +292,12 @@ def search_upcoming_properties(
         LIMIT 5
     """
 
-    with engine.connect() as conn:
-        rows = conn.execute(text(sql), params).mappings().all()
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text(sql), params).mappings().all()
+    except Exception:
+        logger.warning("DB search_properties query failed", exc_info=True)
+        return []
 
     results = _format_rows(rows)
 

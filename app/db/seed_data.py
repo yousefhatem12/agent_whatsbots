@@ -19,6 +19,29 @@ _cache_time: float = 0
 CACHE_TTL: int = 60
 
 
+def _default_config() -> dict:
+    return {
+        "city": "الرياض",
+        "neighborhoods": [],
+        "neighborhood_groups": [],
+        "neighborhoods_by_type": {
+            "studio": [],
+            "one_bedroom": [],
+            "two_bedroom": [],
+        },
+        "neighborhood_groups_by_type": {
+            "studio": [],
+            "one_bedroom": [],
+            "two_bedroom": [],
+            "any": [],
+        },
+        "available_types_by_neighborhood": {},
+        "available_types": [],
+        "price_min": 0,
+        "price_max": 99999,
+    }
+
+
 def get_config() -> dict:
     """Return neighborhood list and price range, refreshing from DB if stale."""
     global _cache, _cache_time
@@ -35,10 +58,10 @@ def get_config() -> dict:
                 _cache["price_max"],
             )
         except Exception:
+            logger.warning("Failed to refresh DB config from database; using fallback/cached config", exc_info=True)
             if _cache is not None:
-                logger.warning("Failed to refresh DB config; serving cached config", exc_info=True)
                 return _cache
-            raise
+            return _default_config()
     return _cache
 
 
