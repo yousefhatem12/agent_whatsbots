@@ -2,4 +2,5 @@
 deployment:
   tasks:
     - export DEPLOYPATH=/home/shgarde/repositories/agent_whatsbot_v2
+    - touch /home/shgarde/repositories/agent_whatsbot_v2/.restart
     - /bin/bash /home/shgarde/repositories/agent_whatsbot_v2/restart_bot.sh
