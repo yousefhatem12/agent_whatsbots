@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from app.db.seed_data import get_config
 from app.services.apartment_types import TYPE_LABELS, neighborhood_type_keys, neighborhood_type_map
 

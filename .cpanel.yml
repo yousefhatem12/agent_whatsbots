@@ -1,6 +1,5 @@
 ---
 deployment:
   tasks:
-    - pkill -9 -f "uvicorn app.main:app" || true
-    - sleep 1
-    - cd /home/shgarde/repositories/agent_whatsbot_v2 && nohup /home/shgarde/virtualenv/repositories/agent_whatsbot_v2/3.11/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 >> /home/shgarde/repositories/agent_whatsbot_v2/app.log 2>&1 < /dev/null &
+    - export DEPLOYPATH=/home/shgarde/repositories/agent_whatsbot_v2
+    - /bin/bash /home/shgarde/repositories/agent_whatsbot_v2/restart_bot.sh

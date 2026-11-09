@@ -1,5 +1,7 @@
 """Helpers for identifying the apartment types used by the chat inventory."""
 
+from __future__ import annotations
+
 import re
 
 

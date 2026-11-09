@@ -3,6 +3,8 @@ Dynamic config loaded from the live database.
 Results are cached for CACHE_TTL seconds so the DB isn't hit on every message.
 The cache refreshes automatically — no app restart needed when data changes.
 """
+from __future__ import annotations
+
 import re
 import time
 import logging

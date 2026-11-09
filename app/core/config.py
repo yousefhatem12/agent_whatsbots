@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import logging
 from urllib.parse import quote_plus
@@ -26,7 +28,7 @@ OPENAI_MODEL = _env("OPENAI_MODEL", "gpt-4o")
 OPENAI_BASE_URL = _env("OPENAI_BASE_URL")
 
 DEEPSEEK_API_KEY = _env("DEEPSEEK_API_KEY")
-DEEPSEEK_MODEL = _env("DEEPSEEK_MODEL", "deepseek-v4-flash")
+DEEPSEEK_MODEL = _env("DEEPSEEK_MODEL", "deepseek-flash")
 DEEPSEEK_BASE_URL = _env("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 
 LLM_PROVIDER = (_env("LLM_PROVIDER", "openai") or "openai").lower()
