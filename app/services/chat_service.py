@@ -20,7 +20,7 @@ from app.db.database import (
 )
 from app.db.seed_data import get_config
 from app.services.apartment_types import detect_type
-from app.services.prompts import get_system_prompt, get_tools
+from app.services.prompts import WELCOME_MESSAGE, get_system_prompt, get_tools
 
 _client_kwargs = {"api_key": LLM_API_KEY}
 if LLM_BASE_URL:
@@ -69,6 +69,8 @@ def _reply_mentions_property(reply: str, property_data: dict) -> bool:
 
 def _prepare_customer_reply(reply: str, property_data: dict | None = None) -> str:
     """Clean customer output and guarantee the current item's website link."""
+    if "حياكم الله في شقردي" in reply:
+        return reply.strip()
     cleaned = _strip_emojis(reply)
     # Normalize accidental Markdown bold (**text**) to WhatsApp bold (*text*)
     cleaned = re.sub(r"\*\*(.+?)\*\*", r"*\1*", cleaned)
@@ -222,7 +224,56 @@ def get_session(
     return SESSIONS[phone]
 
 
+_GREETING_WORDS = {
+    "سلام", "السلام", "عليكم", "ورحمه", "الله", "وبركاته", "وعليكم",
+    "مرحبا", "مرحبتين", "مراحب", "اهلا", "اهلين", "وسهلا", "هلا", "والله", "يا",
+    "صباح", "مساء", "الخير", "النور", "الفل", "الورد",
+    "هاي", "هلو", "الو", "hello", "hi", "hey", "start", "ابدا", "ابدأ",
+    "اخوي", "اختي", "ياغالي", "غالي", "كابتن", "باشا",
+}
+
+_GREETING_PHRASES = {
+    "اود الاستفسار عن منتجات متجر شقردي",
+    "استفسار عن منتجات متجر شقردي",
+    "استفسار عن منتجات شقردي",
+    "اود الاستفسار عن متجر شقردي",
+    "استفسار عن متجر شقردي",
+    "معلومات عن المتجر",
+    "متجر شقردي",
+    "شقردي",
+    "من انتم",
+    "مين انتم",
+    "من انت",
+    "مين انت",
+    "شنو متجركم",
+    "وش متجركم",
+}
+
+
+def is_greeting(message: str) -> bool:
+    """Return True if message is purely a greeting, pleasantry, or store introduction request."""
+    raw = (message or "").strip()
+    if not raw:
+        return True
+    norm = _normalise_arabic(raw)
+    norm = re.sub(r"[^\w\s]", " ", norm)
+    norm = re.sub(r"\s+", " ", norm).strip()
+    if not norm:
+        return True
+    if norm in _GREETING_PHRASES:
+        return True
+    words = norm.split()
+    return bool(words and all(w in _GREETING_WORDS for w in words))
+
+
 def process_message(phone: str, message: str) -> tuple[str, list[str]]:
+    if is_greeting(message):
+        messages = get_session(phone)
+        messages.append({"role": "user", "content": message})
+        messages.append({"role": "assistant", "content": WELCOME_MESSAGE})
+        log_chat_turn(phone, message, WELCOME_MESSAGE)
+        return (WELCOME_MESSAGE, [])
+
     criteria = _update_criteria(phone, message)
     messages = get_session(
         phone,

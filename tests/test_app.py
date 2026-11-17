@@ -11,8 +11,11 @@ from app.services.chat_service import (
     _strip_emojis,
     _update_criteria,
     get_session,
+    is_greeting,
+    process_message,
     reset_session,
 )
+from app.services.prompts import WELCOME_MESSAGE
 
 
 MOCK_CONFIG = {
@@ -100,6 +103,42 @@ class RealEstateBotTests(unittest.TestCase):
         self.assertEqual(req.message, "السلام عليكم")
         with self.assertRaises(ValueError):
             ChatRequest(phone="   ", message="مرحبا")
+
+    def test_welcome_message_content(self):
+        self.assertIn("🌟 حياكم الله في شقردي! 🌟", WELCOME_MESSAGE)
+        self.assertIn("https://www.shgarde.com", WELCOME_MESSAGE)
+        self.assertIn("https://shgarde.com/category/mesheal", WELCOME_MESSAGE)
+        self.assertIn("66907790", WELCOME_MESSAGE)
+        self.assertIn("https://wa.me/96566907790", WELCOME_MESSAGE)
+        self.assertIn("شقردي.. تسوّق أكثر، واستمتع أكثر!", WELCOME_MESSAGE)
+
+    def test_is_greeting(self):
+        self.assertTrue(is_greeting("مرحبا"))
+        self.assertTrue(is_greeting("السلام عليكم"))
+        self.assertTrue(is_greeting("السلام عليكم ورحمة الله وبركاته"))
+        self.assertTrue(is_greeting("هلا والله"))
+        self.assertTrue(is_greeting("صباح الخير"))
+        self.assertTrue(is_greeting("مساء الفل"))
+        self.assertTrue(is_greeting("hello"))
+        self.assertTrue(is_greeting("hi"))
+        self.assertTrue(is_greeting("/start"))
+        self.assertTrue(is_greeting("أود الاستفسار عن منتجات متجر شقردي"))
+        self.assertTrue(is_greeting(""))
+        self.assertFalse(is_greeting("السلام عليكم ابي شاحن"))
+        self.assertFalse(is_greeting("كم سعر ايفون 15"))
+        self.assertFalse(is_greeting("شكرا جزيلا"))
+
+    def test_prepare_customer_reply_preserves_welcome_message(self):
+        cleaned = _prepare_customer_reply(WELCOME_MESSAGE)
+        self.assertEqual(cleaned, WELCOME_MESSAGE)
+        self.assertIn("🌟", cleaned)
+        self.assertIn("❤️", cleaned)
+
+    @patch("app.services.chat_service.log_chat_turn")
+    def test_process_message_returns_welcome_message_on_greeting(self, _mock_log):
+        reply, images = process_message("+96566907790", "السلام عليكم")
+        self.assertEqual(reply, WELCOME_MESSAGE)
+        self.assertEqual(images, [])
 
 
 if __name__ == "__main__":
